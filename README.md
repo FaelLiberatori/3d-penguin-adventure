@@ -1,10 +1,10 @@
-# Penguin Adventure
+# 3D Penguin Adventure
 
-Este documento fornece uma visão geral do projeto **Penguin Adventure**, um jogo 3D simples desenvolvido com C++ e OpenGL.
+Este documento fornece uma visão geral do projeto **3D Penguin Adventure**, um jogo 3D simples desenvolvido com C++ e OpenGL.
 
 ## 1\. Descrição
 
-**Penguin Adventure** é um jogo onde o jogador controla uma mamãe pinguim em uma grande placa de gelo. O objetivo é garantir a sobrevivência do seu filhote, que está com fome e perde vida com o tempo.
+**3D Penguin Adventure** é um jogo onde o jogador controla uma mamãe pinguim em uma grande placa de gelo. O objetivo é garantir a sobrevivência do seu filhote, que está com fome e perde vida com o tempo.
 
 ## 2\. Objetivo do Jogo
 
