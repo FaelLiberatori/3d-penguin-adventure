@@ -144,11 +144,43 @@ void init()
     glClearColor(0.0f, 0.2f, 0.5f, 1.0f);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_LIGHTING);
-    glEnable(GL_LIGHT0);
     glEnable(GL_COLOR_MATERIAL);
     glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
-    GLfloat light_pos[] = {5.0, 10.0, 5.0, 1.0};
-    glLightfv(GL_LIGHT0, GL_POSITION, light_pos);
+
+    // --- LUZ AMBIENTE GLOBAL (SOL BRILHANDO EM TUDO) ---
+    GLfloat global_ambient[] = {0.3f, 0.3f, 0.3f, 1.0f};
+    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, global_ambient);
+
+    // --- LUZ 0: FONTE DE LUZ PRINCIPAL (SOL) ---
+    // Uma luz direcional, vindo de cima e de um lado.
+    GLfloat light0_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};
+    GLfloat light0_diffuse[] = {0.8f, 0.8f, 0.8f, 1.0f};
+    GLfloat light0_specular[] = {0.5f, 0.5f, 0.5f, 1.0f};
+    GLfloat light0_position[] = {10.0f, 20.0f, 10.0f, 0.0f}; // w=0.0f para luz direcional (sol infinito)
+
+    glLightfv(GL_LIGHT0, GL_AMBIENT, light0_ambient);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, light0_diffuse);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, light0_specular);
+    glLightfv(GL_LIGHT0, GL_POSITION, light0_position);
+    glEnable(GL_LIGHT0);
+
+    // --- LUZ 1: LANTERNA (SPOTLIGHT) PARA OS PEIXES ---
+    // Será configurada e posicionada na função drawScene
+    GLfloat light1_ambient[] = {0.1f, 0.1f, 0.0f, 1.0f};
+    GLfloat light1_diffuse[] = {1.0f, 1.0f, 0.5f, 1.0f}; // Luz amarelada
+    GLfloat light1_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    
+    glLightfv(GL_LIGHT1, GL_AMBIENT, light1_ambient);
+    glLightfv(GL_LIGHT1, GL_DIFFUSE, light1_diffuse);
+    glLightfv(GL_LIGHT1, GL_SPECULAR, light1_specular);
+
+    // Propriedades do Spotlight
+    GLfloat spot_direction[] = {0.0f, -1.0f, 0.0f}; // Aponta para baixo
+    glLightfv(GL_LIGHT1, GL_SPOT_DIRECTION, spot_direction);
+    glLightf(GL_LIGHT1, GL_SPOT_CUTOFF, 45.0f);   // Ângulo do cone de luz
+    glLightf(GL_LIGHT1, GL_SPOT_EXPONENT, 5.0f); // Concentração da luz no centro
+
+    // A luz 1 será ativada e desativada ao redor do desenho dos peixes
 
     // --- Carregamento de Texturas ---
     glEnable(GL_TEXTURE_2D);
@@ -504,13 +536,23 @@ void drawScene()
     drawPenguin(true, false);
     glPopMatrix();
 
-    // Desenha os peixes
+    // Desenha os peixes com a lanterna apontada para eles
     for (const auto &fish : fishes)
     {
+        // Posição da lanterna (spotlight) acima de cada peixe
+        GLfloat light1_position[] = {fish.x, 5.0f, fish.z, 1.0f}; // w=1.0f para luz posicional
+
+        // Ativa a lanterna, configura sua posição e desenha o peixe
+        glEnable(GL_LIGHT1);
+        glLightfv(GL_LIGHT1, GL_POSITION, light1_position);
+        
         glPushMatrix();
         glTranslatef(fish.x, fish.y, fish.z);
         drawFish();
         glPopMatrix();
+        
+        // Desativa a lanterna para não afetar outros objetos
+        glDisable(GL_LIGHT1);
     }
 
     // Desenha a mamãe pinguim
