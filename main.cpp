@@ -24,17 +24,32 @@ const float CHICK_COLLISION_RADIUS = 1.0f;
 const float HOLE_RADIUS = 1.5f;
 const int TIME_BONUS_FROM_FEEDING = 60;
 const int INITIAL_CHICK_LIFE = 60;
-const int MAX_SESSION_DURATION = 300;
+const int MAX_SESSION_DURATION = 300; // Nome da variável mantido.
 
 // --- Estruturas de Dados ---
+
+// Representa um objeto no mundo do jogo.
 struct GameObject
 {
     float x, y, z;
 };
 
+// Representa um buraco no gelo.
 struct Hole
 {
     float x, z, radius;
+};
+
+// --- NOVA ESTRUTURA PARA ORGANIZAR AS TEXTURAS ---
+// Agrupa todos os IDs de textura em um só lugar.
+struct TextureManager
+{
+    GLuint iceTexture;
+    GLuint penguinBodyTexture;
+    GLuint penguinBellyTexture;
+    GLuint fishTexture;
+    GLuint holeTexture;
+    GLuint skyboxTextures[6];
 };
 
 // --- Estado do Jogo (Variáveis Globais) ---
@@ -50,25 +65,24 @@ bool isGameOver = false;
 bool playerWon = false;
 std::string endMessage = "";
 
-// Animação
+// Variáveis de animação.
 float wingAngle = 0.0f;
 float legAngle = 0.0f;
 bool isMoving = false;
 
-// --- IDs das Janelas ---
-int window_top, window_chase, window_side, window_free, window_front; // ADICIONADO window_front
+// IDs das Janelas.
+int window_top, window_chase, window_side, window_free, window_front;
 std::vector<int> window_ids;
 
 // --- Variáveis de Textura e Skybox ---
-GLuint iceTexture, penguinBodyTexture, penguinBellyTexture, fishTexture, holeTexture;
-GLuint skyboxTextures[6]; // 0: direita, 1: esquerda, 2: topo, 3: base, 4: frente, 5: trás
-GLUquadric* quadric = nullptr;
-
+TextureManager gameTextures; // Única variável para gerenciar todas as texturas.
+GLUquadric *quadric = nullptr;
 
 // --- Protótipos das Funções ---
 void initializeGame();
 void init();
-GLuint loadTexture(const char* path);
+GLuint loadTexture(const char *path);
+void loadAllTextures(); // Nova função para carregar as texturas.
 void drawSkybox();
 void drawPenguin(bool isChick, bool hasFish);
 void drawFish();
@@ -78,7 +92,7 @@ void display_top();
 void display_chase();
 void display_side();
 void display_free();
-void display_front(); // ADICIONADO PROTÓTIPO
+void display_front();
 void reshape(int w, int h);
 void timer(int value);
 void keyboard(unsigned char key, int x, int y);
@@ -86,6 +100,8 @@ void specialKeyboard(int key, int x, int y);
 void updateGameLogic();
 
 // --- Funções Auxiliares ---
+
+// Formata o tempo total em segundos para o formato MM:SS.
 std::string formatTime(int totalSeconds)
 {
     if (totalSeconds < 0)
@@ -98,37 +114,68 @@ std::string formatTime(int totalSeconds)
 }
 
 // --- Função para Carregar Texturas ---
-GLuint loadTexture(const char* path) {
+
+// Carrega uma única textura de um arquivo de imagem.
+GLuint loadTexture(const char *path)
+{
     int w, h, ch;
-    unsigned char* img = stbi_load(path, &w, &h, &ch, 3);
-    if (!img) {
-        printf("Failed to load texture: %s\n", path);
+    // Usa a biblioteca stb_image para carregar a imagem.
+    unsigned char *img = stbi_load(path, &w, &h, &ch, 3);
+    if (!img)
+    {
+        printf("Falha ao carregar a textura: %s\n", path);
         exit(1);
     }
 
     GLuint tex;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
+    glGenTextures(1, &tex);            // Gera um ID para a textura.
+    glBindTexture(GL_TEXTURE_2D, tex); // Ativa a textura.
+    // Define os parâmetros da textura.
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // Envia os dados da imagem para a GPU.
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, img);
-    stbi_image_free(img);
+    stbi_image_free(img); // Libera a memória da imagem.
     return tex;
 }
 
+// --- NOVA FUNÇÃO PARA CENTRALIZAR O CARREGAMENTO ---
+// Carrega todas as texturas necessárias para o jogo de uma vez.
+void loadAllTextures()
+{
+    gameTextures.iceTexture = loadTexture("textures/snow.jpg");
+    gameTextures.penguinBodyTexture = loadTexture("textures/penguin_body.png");
+    gameTextures.penguinBellyTexture = loadTexture("textures/penguin_belly.png");
+    gameTextures.fishTexture = loadTexture("textures/fish.png");
+    gameTextures.holeTexture = loadTexture("textures/hole.jpg");
+
+    // Carrega a mesma textura para todas as faces do skybox.
+    gameTextures.skyboxTextures[0] = loadTexture("textures/sky.jpg"); // Direita
+    gameTextures.skyboxTextures[1] = loadTexture("textures/sky.jpg"); // Esquerda
+    gameTextures.skyboxTextures[2] = loadTexture("textures/sky.jpg"); // Topo
+    gameTextures.skyboxTextures[3] = loadTexture("textures/sky.jpg"); // Base
+    gameTextures.skyboxTextures[4] = loadTexture("textures/sky.jpg"); // Frente
+    gameTextures.skyboxTextures[5] = loadTexture("textures/sky.jpg"); // Trás
+}
 
 // --- Funções Principais ---
+
+// Inicia ou reinicia as variáveis principais do estado do jogo.
 void initializeGame()
 {
-    srand(static_cast<unsigned int>(time(0)));
+    srand(static_cast<unsigned int>(time(0))); // Inicia o gerador de números aleatórios.
     fishes.clear();
     holes.clear();
+
+    // Cria 5 peixes em posições aleatórias.
     for (int i = 0; i < 5; ++i)
     {
         float fx = (rand() % (int)ICE_SHEET_SIZE) - ICE_SHEET_SIZE / 2.0f;
         float fz = (rand() % (int)ICE_SHEET_SIZE) - ICE_SHEET_SIZE / 2.0f;
         fishes.push_back({fx, 0.2f, fz});
     }
+
+    // Reseta a posição e estado do jogador e do jogo.
     motherPenguin = {0.0f, 0.75f, 5.0f};
     penguinRotationY = 180.0f;
     motherHasFish = false;
@@ -139,71 +186,12 @@ void initializeGame()
     sessionTimer = MAX_SESSION_DURATION;
 }
 
-void init()
-{
-    glClearColor(0.0f, 0.2f, 0.5f, 1.0f);
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_LIGHTING);
-    glEnable(GL_COLOR_MATERIAL);
-    glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
-
-    // --- LUZ AMBIENTE GLOBAL (SOL BRILHANDO EM TUDO) ---
-    GLfloat global_ambient[] = {0.3f, 0.3f, 0.3f, 1.0f};
-    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, global_ambient);
-
-    // --- LUZ 0: FONTE DE LUZ PRINCIPAL (SOL) ---
-    // Uma luz direcional, vindo de cima e de um lado.
-    GLfloat light0_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};
-    GLfloat light0_diffuse[] = {0.8f, 0.8f, 0.8f, 1.0f};
-    GLfloat light0_specular[] = {0.5f, 0.5f, 0.5f, 1.0f};
-    GLfloat light0_position[] = {10.0f, 20.0f, 10.0f, 0.0f}; // w=0.0f para luz direcional (sol infinito)
-
-    glLightfv(GL_LIGHT0, GL_AMBIENT, light0_ambient);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, light0_diffuse);
-    glLightfv(GL_LIGHT0, GL_SPECULAR, light0_specular);
-    glLightfv(GL_LIGHT0, GL_POSITION, light0_position);
-    glEnable(GL_LIGHT0);
-
-    // --- LUZ 1: LANTERNA (SPOTLIGHT) PARA OS PEIXES ---
-    // Será configurada e posicionada na função drawScene
-    GLfloat light1_ambient[] = {0.1f, 0.1f, 0.0f, 1.0f};
-    GLfloat light1_diffuse[] = {1.0f, 1.0f, 0.5f, 1.0f}; // Luz amarelada
-    GLfloat light1_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
-    
-    glLightfv(GL_LIGHT1, GL_AMBIENT, light1_ambient);
-    glLightfv(GL_LIGHT1, GL_DIFFUSE, light1_diffuse);
-    glLightfv(GL_LIGHT1, GL_SPECULAR, light1_specular);
-
-    // Propriedades do Spotlight
-    GLfloat spot_direction[] = {0.0f, -1.0f, 0.0f}; // Aponta para baixo
-    glLightfv(GL_LIGHT1, GL_SPOT_DIRECTION, spot_direction);
-    glLightf(GL_LIGHT1, GL_SPOT_CUTOFF, 45.0f);   // Ângulo do cone de luz
-    glLightf(GL_LIGHT1, GL_SPOT_EXPONENT, 5.0f); // Concentração da luz no centro
-
-    // A luz 1 será ativada e desativada ao redor do desenho dos peixes
-
-    // --- Carregamento de Texturas ---
-    glEnable(GL_TEXTURE_2D);
-    iceTexture = loadTexture("textures/snow.jpg");
-    penguinBodyTexture = loadTexture("textures/penguin_body.png");
-    penguinBellyTexture = loadTexture("textures/penguin_belly.png");
-    fishTexture = loadTexture("textures/fish.png");
-    holeTexture = loadTexture("textures/hole.jpg");
-    skyboxTextures[0] = loadTexture("textures/sky.jpg");
-    skyboxTextures[1] = loadTexture("textures/sky.jpg");
-    skyboxTextures[2] = loadTexture("textures/sky.jpg");
-    skyboxTextures[3] = loadTexture("textures/sky.jpg");
-    skyboxTextures[4] = loadTexture("textures/sky.jpg");
-    skyboxTextures[5] = loadTexture("textures/sky.jpg");
-
-    quadric = gluNewQuadric();
-    gluQuadricTexture(quadric, GL_TRUE);
-}
-
+// Atualiza a lógica do jogo, como colisões e tempo.
 void updateGameLogic()
 {
     static int lastUpdateTime = 0;
-    if (lastUpdateTime == 0) {
+    if (lastUpdateTime == 0)
+    {
         lastUpdateTime = glutGet(GLUT_ELAPSED_TIME);
     }
 
@@ -211,6 +199,7 @@ void updateGameLogic()
     int deltaTime = currentTime - lastUpdateTime;
     lastUpdateTime = currentTime;
 
+    // Acumulador para atualizar a lógica a cada segundo.
     static int timeAccumulator = 0;
     timeAccumulator += deltaTime;
 
@@ -218,26 +207,33 @@ void updateGameLogic()
     {
         int secondsPassed = timeAccumulator / 1000;
 
+        // Decrementa o tempo de vida do filhote.
         if (chickLifeTimer > 0)
             chickLifeTimer -= secondsPassed;
-        else {
+        else
+        {
             isGameOver = true;
             endMessage = "GAME OVER: The chick did not survive!";
         }
 
+        // Decrementa o tempo da sessão.
         if (sessionTimer > 0)
             sessionTimer -= secondsPassed;
-        else if (!isGameOver) {
+        else if (!isGameOver)
+        {
             playerWon = true;
             endMessage = "YOU WIN!";
         }
 
+        // Lógica para criar novos buracos periodicamente.
         static int holeSpawnTimer = 0;
         holeSpawnTimer += secondsPassed;
-        if (holeSpawnTimer >= 10 && holes.size() < 10) {
+        if (holeSpawnTimer >= 10 && holes.size() < 10)
+        {
             float hx = (rand() % (int)(ICE_SHEET_SIZE - 4)) - (ICE_SHEET_SIZE / 2.0f - 2);
             float hz = (rand() % (int)(ICE_SHEET_SIZE - 4)) - (ICE_SHEET_SIZE / 2.0f - 2);
-            if (sqrt(hx * hx + hz * hz) > CHICK_COLLISION_RADIUS + HOLE_RADIUS) {
+            if (sqrt(hx * hx + hz * hz) > CHICK_COLLISION_RADIUS + HOLE_RADIUS)
+            {
                 holes.push_back({hx, hz, HOLE_RADIUS});
             }
             holeSpawnTimer = 0;
@@ -245,39 +241,54 @@ void updateGameLogic()
         timeAccumulator %= 1000;
     }
 
-    if (isMoving) {
+    // Controla a animação das asas e pernas quando o pinguim se move.
+    if (isMoving)
+    {
         float time = glutGet(GLUT_ELAPSED_TIME) * 0.01;
         wingAngle = 40.0f * sin(time);
         legAngle = 35.0f * sin(time);
-    } else {
+    }
+    else
+    {
         wingAngle = 0;
         legAngle = 0;
     }
     isMoving = false;
 
-    if (!motherHasFish) {
-        for (auto it = fishes.begin(); it != fishes.end(); ++it) {
+    // Verifica a colisão do pinguim com os peixes.
+    if (!motherHasFish)
+    {
+        for (auto it = fishes.begin(); it != fishes.end(); ++it)
+        {
             float dist = sqrt(pow(motherPenguin.x - it->x, 2) + pow(motherPenguin.z - it->z, 2));
-            if (dist < PENGUIN_COLLISION_RADIUS + FISH_COLLISION_RADIUS) {
+            if (dist < PENGUIN_COLLISION_RADIUS + FISH_COLLISION_RADIUS)
+            {
                 motherHasFish = true;
                 fishes.erase(it);
                 break;
             }
         }
-    } else {
+    }
+    else
+    { // Verifica colisão com o filhote para alimentá-lo.
         float dist = sqrt(pow(motherPenguin.x - chick.x, 2) + pow(motherPenguin.z - chick.z, 2));
-        if (dist < PENGUIN_COLLISION_RADIUS + CHICK_COLLISION_RADIUS) {
+        if (dist < PENGUIN_COLLISION_RADIUS + CHICK_COLLISION_RADIUS)
+        {
             motherHasFish = false;
             chickLifeTimer += TIME_BONUS_FROM_FEEDING;
+            // Cria um novo peixe em um lugar aleatório.
             float fx = (rand() % (int)ICE_SHEET_SIZE) - ICE_SHEET_SIZE / 2.0f;
             float fz = (rand() % (int)ICE_SHEET_SIZE) - ICE_SHEET_SIZE / 2.0f;
             fishes.push_back({fx, 0.2f, fz});
         }
     }
 
-    for (const auto &hole : holes) {
+    // Verifica se o pinguim caiu em um buraco.
+    for (const auto &hole : holes)
+    {
         float dist = sqrt(pow(motherPenguin.x - hole.x, 2) + pow(motherPenguin.z - hole.z, 2));
-        if (dist < hole.radius) {
+        if (dist < hole.radius)
+        {
             isGameOver = true;
             endMessage = "GAME OVER: You fell into a hole!";
         }
@@ -290,15 +301,15 @@ void drawFish()
     glPushMatrix();
     glEnable(GL_TEXTURE_2D);
     glColor3f(1.0f, 1.0f, 1.0f);
-    glBindTexture(GL_TEXTURE_2D, fishTexture);
+    glBindTexture(GL_TEXTURE_2D, gameTextures.fishTexture); // Usa a textura do peixe.
 
-    // Corpo
+    // Corpo do peixe.
     glPushMatrix();
     glScalef(2.0f, 0.7f, 1.0f);
     gluSphere(quadric, 0.5, 15, 15);
     glPopMatrix();
 
-    // Cauda
+    // Cauda do peixe.
     glPushMatrix();
     glTranslatef(-1.0f, 0.0f, 0.0f);
     glRotatef(90, 0, 1, 0);
@@ -313,41 +324,44 @@ void drawFish()
 void drawPenguin(bool isChick, bool hasFish)
 {
     glPushMatrix();
+    // Diminui a escala se for o filhote.
     glScalef(isChick ? 0.7f : 1.0f, isChick ? 0.7f : 1.0f, isChick ? 0.7f : 1.0f);
-    
+
     glEnable(GL_TEXTURE_2D);
     glColor3f(1.0f, 1.0f, 1.0f);
 
-    // Corpo (costas)
-    glBindTexture(GL_TEXTURE_2D, penguinBodyTexture);
+    // Corpo (costas) com textura.
+    glBindTexture(GL_TEXTURE_2D, gameTextures.penguinBodyTexture);
     glPushMatrix();
     glScalef(1.0f, 1.3f, 1.0f);
     gluSphere(quadric, 0.5, 20, 20);
     glPopMatrix();
 
-    // Cabeça
-    glBindTexture(GL_TEXTURE_2D, penguinBodyTexture);
+    // Cabeça com textura.
+    glBindTexture(GL_TEXTURE_2D, gameTextures.penguinBodyTexture);
     glPushMatrix();
     glTranslatef(0.0f, 0.75f, 0.0f);
     gluSphere(quadric, 0.35, 20, 20);
     glPopMatrix();
 
-    // Barriga (frente)
-    glBindTexture(GL_TEXTURE_2D, penguinBellyTexture);
+    // Barriga (frente) com textura.
+    glBindTexture(GL_TEXTURE_2D, gameTextures.penguinBellyTexture);
     glPushMatrix();
     glTranslatef(0.0f, 0.0f, 0.25f);
     glScalef(0.8f, 1.1f, 0.8f);
     gluSphere(quadric, 0.5, 20, 20);
     glPopMatrix();
-    
+
     glDisable(GL_TEXTURE_2D);
 
-    // Bico
+    // Bico do pinguim.
     glColor3f(1.0f, 0.6f, 0.0f);
     glPushMatrix();
     glTranslatef(0.0f, 0.85f, 0.3f);
     glutSolidCone(0.1, 0.5, 10, 10);
-    if (hasFish) {
+    // Se o pinguim estiver segurando um peixe, desenha o peixe no bico.
+    if (hasFish)
+    {
         glPushMatrix();
         glTranslatef(0.0f, 0.0f, 0.4f);
         glScalef(0.2f, 0.2f, 0.2f);
@@ -356,23 +370,25 @@ void drawPenguin(bool isChick, bool hasFish)
     }
     glPopMatrix();
 
-    // Pés
+    // Pés do pinguim.
     glColor3f(1.0f, 0.6f, 0.0f);
     glPushMatrix();
     glTranslatef(-0.2f, -0.6f, 0.0f);
-    if (!isChick) glRotatef(legAngle, 1, 0, 0);
+    if (!isChick)
+        glRotatef(legAngle, 1, 0, 0); // Anima a perna.
     glScalef(0.15f, 0.08f, 0.4f);
     glutSolidCube(1.0);
     glPopMatrix();
 
     glPushMatrix();
     glTranslatef(0.2f, -0.6f, 0.0f);
-    if (!isChick) glRotatef(-legAngle, 1, 0, 0);
+    if (!isChick)
+        glRotatef(-legAngle, 1, 0, 0); // Anima a outra perna.
     glScalef(0.15f, 0.08f, 0.4f);
     glutSolidCube(1.0);
     glPopMatrix();
 
-    // Olhos Brancos
+    // Olhos (parte branca).
     glColor3f(1.0f, 1.0f, 1.0f);
     glPushMatrix();
     glTranslatef(-0.1f, 0.85f, 0.3f);
@@ -381,7 +397,7 @@ void drawPenguin(bool isChick, bool hasFish)
     glutSolidSphere(0.07, 10, 10);
     glPopMatrix();
 
-    // Pupilas
+    // Pupilas (parte preta).
     glColor3f(0.0f, 0.0f, 0.0f);
     glPushMatrix();
     glTranslatef(-0.1f, 0.85f, 0.32f);
@@ -390,139 +406,164 @@ void drawPenguin(bool isChick, bool hasFish)
     glutSolidSphere(0.03, 10, 10);
     glPopMatrix();
 
-    // Asas
-    if (!isChick) {
+    // Asas (apenas para o pinguim mãe).
+    if (!isChick)
+    {
         glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, penguinBodyTexture);
+        glBindTexture(GL_TEXTURE_2D, gameTextures.penguinBodyTexture);
         glColor3f(1.0f, 1.0f, 1.0f);
 
+        // Asa esquerda.
         glPushMatrix();
         glTranslatef(-0.5f, 0.0f, 0.0f);
         glRotatef(-20, 0, 0, 1);
-        glRotatef(wingAngle, 1, 0, 0);
+        glRotatef(wingAngle, 1, 0, 0); // Anima a asa.
         glScalef(0.1f, 0.6f, 0.4f);
         glutSolidCube(1.0);
         glPopMatrix();
 
+        // Asa direita.
         glPushMatrix();
         glTranslatef(0.5f, 0.0f, 0.0f);
         glRotatef(20, 0, 0, 1);
-        glRotatef(-wingAngle, 1, 0, 0);
+        glRotatef(-wingAngle, 1, 0, 0); // Anima a outra asa.
         glScalef(0.1f, 0.6f, 0.4f);
         glutSolidCube(1.0);
         glPopMatrix();
-        
+
         glDisable(GL_TEXTURE_2D);
     }
     glPopMatrix();
 }
 
 // --- Função para Desenhar o Skybox ---
-void drawSkybox() {
+void drawSkybox()
+{
     glPushMatrix();
-    // Centraliza o skybox na câmera para dar a ilusão de infinito
+    // Centraliza o skybox na posição do jogador para dar a ilusão de infinito.
     glTranslatef(motherPenguin.x, motherPenguin.y, motherPenguin.z);
 
     glPushAttrib(GL_ENABLE_BIT);
     glEnable(GL_TEXTURE_2D);
-    glDisable(GL_LIGHTING);   
-    glDisable(GL_DEPTH_TEST); 
+    glDisable(GL_LIGHTING);   // Desabilita a luz para o céu não ficar escuro.
+    glDisable(GL_DEPTH_TEST); // Garante que o céu seja desenhado atrás de tudo.
 
     glColor3f(1.0, 1.0, 1.0);
+    float s = 75.0f; // Define o tamanho do Skybox.
 
-    float s = 75.0f; // Tamanho do Skybox
-
-    // Face Direita (+X)
-    glBindTexture(GL_TEXTURE_2D, skyboxTextures[0]);
+    // Desenha cada uma das 6 faces do cubo do skybox com sua textura.
+    glBindTexture(GL_TEXTURE_2D, gameTextures.skyboxTextures[0]);
     glBegin(GL_QUADS);
-    glTexCoord2f(0, 0); glVertex3f(s, -s, -s);
-    glTexCoord2f(1, 0); glVertex3f(s, -s, s);
-    glTexCoord2f(1, 1); glVertex3f(s, s, s);
-    glTexCoord2f(0, 1); glVertex3f(s, s, -s);
+    glTexCoord2f(0, 0);
+    glVertex3f(s, -s, -s);
+    glTexCoord2f(1, 0);
+    glVertex3f(s, -s, s);
+    glTexCoord2f(1, 1);
+    glVertex3f(s, s, s);
+    glTexCoord2f(0, 1);
+    glVertex3f(s, s, -s);
     glEnd();
 
-    // Face Esquerda (-X)
-    glBindTexture(GL_TEXTURE_2D, skyboxTextures[1]);
+    glBindTexture(GL_TEXTURE_2D, gameTextures.skyboxTextures[1]);
     glBegin(GL_QUADS);
-    glTexCoord2f(1, 0); glVertex3f(-s, -s, -s);
-    glTexCoord2f(1, 1); glVertex3f(-s, s, -s);
-    glTexCoord2f(0, 1); glVertex3f(-s, s, s);
-    glTexCoord2f(0, 0); glVertex3f(-s, -s, s);
+    glTexCoord2f(1, 0);
+    glVertex3f(-s, -s, -s);
+    glTexCoord2f(1, 1);
+    glVertex3f(-s, s, -s);
+    glTexCoord2f(0, 1);
+    glVertex3f(-s, s, s);
+    glTexCoord2f(0, 0);
+    glVertex3f(-s, -s, s);
     glEnd();
 
-    // Face Superior (+Y)
-    glBindTexture(GL_TEXTURE_2D, skyboxTextures[2]);
+    glBindTexture(GL_TEXTURE_2D, gameTextures.skyboxTextures[2]);
     glBegin(GL_QUADS);
-    glTexCoord2f(0, 1); glVertex3f(-s, s, -s);
-    glTexCoord2f(0, 0); glVertex3f(-s, s, s);
-    glTexCoord2f(1, 0); glVertex3f(s, s, s);
-    glTexCoord2f(1, 1); glVertex3f(s, s, -s);
-    glEnd();
-    
-    // Face Inferior (-Y)
-    glBindTexture(GL_TEXTURE_2D, skyboxTextures[3]);
-    glBegin(GL_QUADS);
-    glTexCoord2f(1, 1); glVertex3f(s, -s, -s);
-    glTexCoord2f(0, 1); glVertex3f(-s, -s, -s);
-    glTexCoord2f(0, 0); glVertex3f(-s, -s, s);
-    glTexCoord2f(1, 0); glVertex3f(s, -s, s);
+    glTexCoord2f(0, 1);
+    glVertex3f(-s, s, -s);
+    glTexCoord2f(0, 0);
+    glVertex3f(-s, s, s);
+    glTexCoord2f(1, 0);
+    glVertex3f(s, s, s);
+    glTexCoord2f(1, 1);
+    glVertex3f(s, s, -s);
     glEnd();
 
-    // Face Frontal (-Z)
-    glBindTexture(GL_TEXTURE_2D, skyboxTextures[4]);
+    glBindTexture(GL_TEXTURE_2D, gameTextures.skyboxTextures[3]);
     glBegin(GL_QUADS);
-    glTexCoord2f(1, 0); glVertex3f(s, -s, -s);
-    glTexCoord2f(1, 1); glVertex3f(s, s, -s);
-    glTexCoord2f(0, 1); glVertex3f(-s, s, -s);
-    glTexCoord2f(0, 0); glVertex3f(-s, -s, -s);
+    glTexCoord2f(1, 1);
+    glVertex3f(s, -s, -s);
+    glTexCoord2f(0, 1);
+    glVertex3f(-s, -s, -s);
+    glTexCoord2f(0, 0);
+    glVertex3f(-s, -s, s);
+    glTexCoord2f(1, 0);
+    glVertex3f(s, -s, s);
     glEnd();
 
-    // Face Traseira (+Z)
-    glBindTexture(GL_TEXTURE_2D, skyboxTextures[5]);
+    glBindTexture(GL_TEXTURE_2D, gameTextures.skyboxTextures[4]);
     glBegin(GL_QUADS);
-    glTexCoord2f(0, 0); glVertex3f(s, -s, s);
-    glTexCoord2f(1, 0); glVertex3f(-s, -s, s);
-    glTexCoord2f(1, 1); glVertex3f(-s, s, s);
-    glTexCoord2f(0, 1); glVertex3f(s, s, s);
+    glTexCoord2f(1, 0);
+    glVertex3f(s, -s, -s);
+    glTexCoord2f(1, 1);
+    glVertex3f(s, s, -s);
+    glTexCoord2f(0, 1);
+    glVertex3f(-s, s, -s);
+    glTexCoord2f(0, 0);
+    glVertex3f(-s, -s, -s);
     glEnd();
 
-    glPopAttrib();
+    glBindTexture(GL_TEXTURE_2D, gameTextures.skyboxTextures[5]);
+    glBegin(GL_QUADS);
+    glTexCoord2f(0, 0);
+    glVertex3f(s, -s, s);
+    glTexCoord2f(1, 0);
+    glVertex3f(-s, -s, s);
+    glTexCoord2f(1, 1);
+    glVertex3f(-s, s, s);
+    glTexCoord2f(0, 1);
+    glVertex3f(s, s, s);
+    glEnd();
+
+    glPopAttrib(); // Restaura os atributos do OpenGL.
     glPopMatrix();
 }
 
 // --- Função de Desenho da Cena ---
 void drawScene()
 {
-    // Desenha o Skybox primeiro
+    // Desenha o céu primeiro.
     drawSkybox();
 
-    // Habilita a textura para o chão de gelo
+    // Habilita e aplica a textura do chão de gelo.
     glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, iceTexture);
+    glBindTexture(GL_TEXTURE_2D, gameTextures.iceTexture);
     glColor3f(1.0f, 1.0f, 1.0f);
 
     glPushMatrix();
-    glTranslatef(0.0f, 0.0f, 0.0f); 
-    float textureRepeat = 10.0f;
+    float textureRepeat = 10.0f; // Faz a textura se repetir no chão.
     glBegin(GL_QUADS);
-        glNormal3f(0.0, 1.0, 0.0);
-        glTexCoord2f(0.0, 0.0); glVertex3f(-ICE_SHEET_SIZE, 0.0, -ICE_SHEET_SIZE);
-        glTexCoord2f(textureRepeat, 0.0); glVertex3f(ICE_SHEET_SIZE, 0.0, -ICE_SHEET_SIZE);
-        glTexCoord2f(textureRepeat, textureRepeat); glVertex3f(ICE_SHEET_SIZE, 0.0, ICE_SHEET_SIZE);
-        glTexCoord2f(0.0, textureRepeat); glVertex3f(-ICE_SHEET_SIZE, 0.0, ICE_SHEET_SIZE);
+    glNormal3f(0.0, 1.0, 0.0);
+    glTexCoord2f(0.0, 0.0);
+    glVertex3f(-ICE_SHEET_SIZE, 0.0, -ICE_SHEET_SIZE);
+    glTexCoord2f(textureRepeat, 0.0);
+    glVertex3f(ICE_SHEET_SIZE, 0.0, -ICE_SHEET_SIZE);
+    glTexCoord2f(textureRepeat, textureRepeat);
+    glVertex3f(ICE_SHEET_SIZE, 0.0, ICE_SHEET_SIZE);
+    glTexCoord2f(0.0, textureRepeat);
+    glVertex3f(-ICE_SHEET_SIZE, 0.0, ICE_SHEET_SIZE);
     glEnd();
     glPopMatrix();
     glDisable(GL_TEXTURE_2D);
 
-    // Desenha os buracos com textura
+    // Desenha os buracos com a textura de buraco.
     glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, holeTexture);
-    glDisable(GL_LIGHTING); 
+    glBindTexture(GL_TEXTURE_2D, gameTextures.holeTexture);
+    glDisable(GL_LIGHTING); // Desabilita luz para o buraco parecer mais escuro.
     glColor3f(1.0f, 1.0f, 1.0f);
     for (const auto &hole : holes)
     {
         glPushMatrix();
-        glTranslatef(hole.x, 0.01f, hole.z);
+        glTranslatef(hole.x, 0.01f, hole.z); // Um pouco acima do chão para evitar z-fighting.
         glRotatef(90, 1, 0, 0);
         gluDisk(quadric, 0, hole.radius, 32, 1);
         glPopMatrix();
@@ -530,32 +571,31 @@ void drawScene()
     glEnable(GL_LIGHTING);
     glDisable(GL_TEXTURE_2D);
 
-    // Desenha o filhote
+    // Desenha o filhote.
     glPushMatrix();
     glTranslatef(chick.x, chick.y, chick.z);
     drawPenguin(true, false);
     glPopMatrix();
 
-    // Desenha os peixes com a lanterna apontada para eles
+    // Desenha os peixes.
     for (const auto &fish : fishes)
     {
-        // Posição da lanterna (spotlight) acima de cada peixe
-        GLfloat light1_position[] = {fish.x, 5.0f, fish.z, 1.0f}; // w=1.0f para luz posicional
-
-        // Ativa a lanterna, configura sua posição e desenha o peixe
+        // Posiciona uma luz de destaque (spotlight) acima de cada peixe.
+        GLfloat light1_position[] = {fish.x, 5.0f, fish.z, 1.0f};
         glEnable(GL_LIGHT1);
         glLightfv(GL_LIGHT1, GL_POSITION, light1_position);
-        
+
+        // Desenha o peixe.
         glPushMatrix();
         glTranslatef(fish.x, fish.y, fish.z);
         drawFish();
         glPopMatrix();
-        
-        // Desativa a lanterna para não afetar outros objetos
+
+        // Desativa a luz para não afetar outros objetos.
         glDisable(GL_LIGHT1);
     }
 
-    // Desenha a mamãe pinguim
+    // Desenha a mamãe pinguim.
     glPushMatrix();
     glTranslatef(motherPenguin.x, motherPenguin.y, motherPenguin.z);
     glRotatef(penguinRotationY, 0, 1, 0);
@@ -563,9 +603,10 @@ void drawScene()
     glPopMatrix();
 }
 
-
+// Desenha a Interface do Usuário (textos na tela).
 void drawUI()
 {
+    // Muda para o modo de projeção 2D para desenhar texto.
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
@@ -578,19 +619,22 @@ void drawUI()
     int w = glutGet(GLUT_WINDOW_WIDTH);
     int h = glutGet(GLUT_WINDOW_HEIGHT);
 
+    // Se o jogo acabou, mostra a mensagem de fim de jogo.
     if (playerWon || isGameOver)
     {
         if (playerWon)
-            glColor3f(0.1f, 0.8f, 0.1f);
+            glColor3f(0.1f, 0.8f, 0.1f); // Verde para vitória.
         else
-            glColor3f(0.8f, 0.1f, 0.1f);
-        
-        int msgWidth = endMessage.length() * 14; 
+            glColor3f(0.8f, 0.1f, 0.1f); // Vermelho para derrota.
+
+        int msgWidth = endMessage.length() * 14;
         glRasterPos2i(w / 2 - msgWidth / 2, h / 2);
         for (char c : endMessage)
         {
             glutBitmapCharacter(GLUT_BITMAP_TIMES_ROMAN_24, c);
         }
+
+        // Mostra a mensagem para reiniciar.
         glColor3f(1.0f, 1.0f, 1.0f);
         std::string restartMsg = "Press 'R' to restart";
         int restartMsgWidth = restartMsg.length() * 9;
@@ -600,7 +644,7 @@ void drawUI()
             glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
         }
     }
-    else
+    else // Se o jogo está rolando, mostra os contadores de tempo.
     {
         glColor3f(1.0f, 1.0f, 1.0f);
         std::string lifeStr = "Chick's Life: " + formatTime(chickLifeTimer);
@@ -616,6 +660,8 @@ void drawUI()
             glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, c);
         }
     }
+
+    // Restaura os modos de matriz e iluminação.
     glEnable(GL_LIGHTING);
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
@@ -623,13 +669,16 @@ void drawUI()
     glPopMatrix();
 }
 
-// Funções de display para cada janela/câmera
-void display_top() {
+// --- Funções de display para cada câmera ---
+
+// Função de display para a câmera de topo.
+void display_top()
+{
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     float aspect = (float)glutGet(GLUT_WINDOW_WIDTH) / (float)glutGet(GLUT_WINDOW_HEIGHT);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    glOrtho(-30 * aspect, 30 * aspect, -30, 30, 1, 200);
+    glOrtho(-30 * aspect, 30 * aspect, -30, 30, 1, 200); // Projeção ortográfica.
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     gluLookAt(motherPenguin.x, 50.0, motherPenguin.z, motherPenguin.x, 0, motherPenguin.z, 0, 0, -1);
@@ -638,12 +687,14 @@ void display_top() {
     glutSwapBuffers();
 }
 
-void display_chase() {
+// Função de display para a câmera de perseguição.
+void display_chase()
+{
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     float aspect = (float)glutGet(GLUT_WINDOW_WIDTH) / (float)glutGet(GLUT_WINDOW_HEIGHT);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluPerspective(60.0, aspect, 1.0, 200.0);
+    gluPerspective(60.0, aspect, 1.0, 200.0); // Projeção em perspectiva.
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     float camX = motherPenguin.x - 10 * sin(penguinRotationY * M_PI / 180.0);
@@ -654,7 +705,9 @@ void display_chase() {
     glutSwapBuffers();
 }
 
-void display_side() {
+// Função de display para a câmera lateral.
+void display_side()
+{
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     float aspect = (float)glutGet(GLUT_WINDOW_WIDTH) / (float)glutGet(GLUT_WINDOW_HEIGHT);
     glMatrixMode(GL_PROJECTION);
@@ -668,7 +721,9 @@ void display_side() {
     glutSwapBuffers();
 }
 
-void display_free() {
+// Função de display para a câmera livre.
+void display_free()
+{
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     float aspect = (float)glutGet(GLUT_WINDOW_WIDTH) / (float)glutGet(GLUT_WINDOW_HEIGHT);
     glMatrixMode(GL_PROJECTION);
@@ -682,8 +737,9 @@ void display_free() {
     glutSwapBuffers();
 }
 
-// --- NOVA FUNÇÃO DE DISPLAY PARA A CÂMERA FRONTAL (EIXO Z) ---
-void display_front() {
+// Função de display para a câmera frontal.
+void display_front()
+{
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     float aspect = (float)glutGet(GLUT_WINDOW_WIDTH) / (float)glutGet(GLUT_WINDOW_HEIGHT);
     glMatrixMode(GL_PROJECTION);
@@ -691,42 +747,52 @@ void display_front() {
     gluPerspective(60.0, aspect, 1.0, 200.0);
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
-    // Câmera posicionada "na frente" do pinguim no eixo Z, olhando para ele
     gluLookAt(motherPenguin.x, motherPenguin.y + 5, motherPenguin.z + 20, motherPenguin.x, motherPenguin.y, motherPenguin.z, 0, 1, 0);
     drawScene();
     drawUI();
     glutSwapBuffers();
 }
 
-
+// Chamada quando a janela é redimensionada.
 void reshape(int w, int h)
 {
-    if (h == 0) h = 1;
+    if (h == 0)
+        h = 1;
     glViewport(0, 0, w, h);
 }
 
+// Função de temporizador que atualiza e redesenha a tela.
 void timer(int value)
 {
-    updateGameLogic();
-    for (int id : window_ids) {
+    updateGameLogic(); // Atualiza a lógica do jogo.
+    // Pede para todas as janelas se redesenharem.
+    for (int id : window_ids)
+    {
         glutSetWindow(id);
         glutPostRedisplay();
     }
+    // Agenda a próxima chamada do timer.
     glutTimerFunc(1000 / FPS, timer, 0);
 }
 
+// Lida com as teclas normais do teclado.
 void keyboard(unsigned char key, int x, int y)
 {
-    if (key == 27) exit(0);
-    if ((isGameOver || playerWon) && (key == 'r' || key == 'R')) {
+    if (key == 27)
+        exit(0); // Fecha o jogo com a tecla ESC.
+    // Se o jogo acabou, a tecla 'R' reinicia.
+    if ((isGameOver || playerWon) && (key == 'r' || key == 'R'))
+    {
         initializeGame();
     }
 }
 
+// Lida com as teclas especiais (setas).
 void specialKeyboard(int key, int x, int y)
 {
-    if (isGameOver || playerWon) return;
-    isMoving = true;
+    if (isGameOver || playerWon)
+        return;      // Não faz nada se o jogo acabou.
+    isMoving = true; // Ativa a animação de movimento.
     float angleRad = penguinRotationY * M_PI / 180.0f;
     switch (key)
     {
@@ -746,25 +812,78 @@ void specialKeyboard(int key, int x, int y)
         break;
     }
 
+    // Impede que o pinguim saia da área de gelo.
     float limit = ICE_SHEET_SIZE - PENGUIN_COLLISION_RADIUS;
-    if (motherPenguin.x > limit) motherPenguin.x = limit;
-    if (motherPenguin.x < -limit) motherPenguin.x = -limit;
-    if (motherPenguin.z > limit) motherPenguin.z = limit;
-    if (motherPenguin.z < -limit) motherPenguin.z = -limit;
+    if (motherPenguin.x > limit)
+        motherPenguin.x = limit;
+    if (motherPenguin.x < -limit)
+        motherPenguin.x = -limit;
+    if (motherPenguin.z > limit)
+        motherPenguin.z = limit;
+    if (motherPenguin.z < -limit)
+        motherPenguin.z = -limit;
 }
 
+// Função de inicialização do OpenGL.
+void init()
+{
+    glClearColor(0.0f, 0.2f, 0.5f, 1.0f);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_LIGHTING);
+    glEnable(GL_COLOR_MATERIAL);
+    glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
+
+    // Configura a luz ambiente global.
+    GLfloat global_ambient[] = {0.3f, 0.3f, 0.3f, 1.0f};
+    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, global_ambient);
+
+    // Configura a luz principal (sol).
+    GLfloat light0_ambient[] = {0.2f, 0.2f, 0.2f, 1.0f};
+    GLfloat light0_diffuse[] = {0.8f, 0.8f, 0.8f, 1.0f};
+    GLfloat light0_specular[] = {0.5f, 0.5f, 0.5f, 1.0f};
+    GLfloat light0_position[] = {10.0f, 20.0f, 10.0f, 0.0f};
+    glLightfv(GL_LIGHT0, GL_AMBIENT, light0_ambient);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, light0_diffuse);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, light0_specular);
+    glLightfv(GL_LIGHT0, GL_POSITION, light0_position);
+    glEnable(GL_LIGHT0);
+
+    // Configura a luz de destaque para os peixes.
+    GLfloat light1_ambient[] = {0.1f, 0.1f, 0.0f, 1.0f};
+    GLfloat light1_diffuse[] = {1.0f, 1.0f, 0.5f, 1.0f};
+    GLfloat light1_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    glLightfv(GL_LIGHT1, GL_AMBIENT, light1_ambient);
+    glLightfv(GL_LIGHT1, GL_DIFFUSE, light1_diffuse);
+    glLightfv(GL_LIGHT1, GL_SPECULAR, light1_specular);
+    GLfloat spot_direction[] = {0.0f, -1.0f, 0.0f};
+    glLightfv(GL_LIGHT1, GL_SPOT_DIRECTION, spot_direction);
+    glLightf(GL_LIGHT1, GL_SPOT_CUTOFF, 45.0f);
+    glLightf(GL_LIGHT1, GL_SPOT_EXPONENT, 5.0f);
+
+    // --- Carregamento de Texturas Centralizado ---
+    glEnable(GL_TEXTURE_2D);
+    loadAllTextures(); // Chama a nova função para carregar tudo.
+
+    // Cria o objeto quadric para desenhar esferas e cilindros.
+    quadric = gluNewQuadric();
+    gluQuadricTexture(quadric, GL_TRUE); // Habilita texturas no quadric.
+}
+
+// Função principal do programa.
 int main(int argc, char **argv)
 {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     const int spacing = 50;
 
+    // --- Criação das Janelas ---
+
     // Janela 1: Perseguição (Principal)
     glutInitWindowSize(INITIAL_WIDTH, INITIAL_HEIGHT);
     glutInitWindowPosition(spacing, spacing);
     window_chase = glutCreateWindow("Penguin Adventure - Chase Camera");
-    init();
-    initializeGame();
+    init();           // Inicializa o OpenGL e as texturas.
+    initializeGame(); // Inicializa o estado do jogo.
     glutDisplayFunc(display_chase);
     glutReshapeFunc(reshape);
     glutKeyboardFunc(keyboard);
@@ -804,9 +923,9 @@ int main(int argc, char **argv)
     glutSpecialFunc(specialKeyboard);
     window_ids.push_back(window_free);
 
-    // --- NOVA JANELA 5: Frontal (Eixo Z) ---
+    // Janela 5: Frontal (Eixo Z)
     glutInitWindowSize(INITIAL_WIDTH, INITIAL_HEIGHT);
-    glutInitWindowPosition(2 * (INITIAL_WIDTH + spacing) + spacing, spacing); // Posicionada à direita da Câmera Topo
+    glutInitWindowPosition(2 * (INITIAL_WIDTH + spacing) + spacing, spacing);
     window_front = glutCreateWindow("Penguin Adventure - Front Camera (Z-axis)");
     init();
     glutDisplayFunc(display_front);
@@ -815,13 +934,15 @@ int main(int argc, char **argv)
     glutSpecialFunc(specialKeyboard);
     window_ids.push_back(window_front);
 
-
+    // Inicia o loop do temporizador.
     glutTimerFunc(1000 / FPS, timer, 0);
 
+    // Inicia o loop principal do GLUT.
     glutMainLoop();
 
-    // Limpeza
-    if (quadric) {
+    // Limpa os recursos antes de sair.
+    if (quadric)
+    {
         gluDeleteQuadric(quadric);
     }
     return 0;
